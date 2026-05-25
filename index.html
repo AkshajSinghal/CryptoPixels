@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto Million Dollar Homepage</title>
-    <!-- Free Web3 and Database Libraries -->
+    <!-- Web3 and Supabase Dependencies Hosted via CDN -->
     <script src="https://jsdelivr.net"></script>
     <script src="https://jsdelivr.net"></script>
     <style>
@@ -28,10 +28,10 @@
         <div class="stats">1 Pixel = 0.00001 ETH (Base Network) | Click any 10x10 block to buy!</div>
     </header>
 
-    <!-- The 1000x1000 Canvas Grid -->
+    <!-- 1000x1000 Interaction Canvas -->
     <canvas id="gridCanvas" width="1000" height="1000"></canvas>
 
-    <!-- Overlay and Purchase Modal Popup -->
+    <!-- Overlay and Checkout Modal -->
     <div class="overlay" id="overlay"></div>
     <div class="modal" id="buyModal">
         <h3>Buy Pixel Block</h3>
@@ -43,12 +43,12 @@
     </div>
 
     <script>
-        // 🚨 CONFIGURATION
-        const SUPABASE_URL = "https://supabase.com/dashboard/project/kvtdelsdifkerfepvkvn"; 
+        // 🔒 Pre-configured production parameters 
+        const SUPABASE_URL = "https://supabase.co"; 
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dGRlbHNkaWZrZXJmZXB2a3ZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTE0MjUsImV4cCI6MjA5NTI2NzQyNX0.CAZXKUsP47fDiVxiH830Z3nXCFRb4m6XLtP-KX5bE5o"; 
         const MY_WALLET = "0x69142E445C25e4619f49E0DCEac86300f146B624"; 
 
-        // Initialize Supabase
+        // Initialize connection
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const canvas = document.getElementById('gridCanvas');
@@ -61,11 +61,11 @@
         let selectedX = 0;
         let selectedY = 0;
 
-        // 1. Fetch Paid Blocks from Cloud Database and Draw Them
+        // 1. Render Background Matrix & Draw Occupied Blocks
         async function fetchAndDrawPixels() {
             const { data: pixels, error } = await supabaseClient.from('pixels').select('*');
             
-            // Draw a subtle grid background
+            // Draw clean dark background mesh
             ctx.fillStyle = '#111';
             ctx.fillRect(0, 0, 1000, 1000);
             ctx.strokeStyle = '#222';
@@ -86,10 +86,9 @@
             }
         }
 
-        // 2. Handle Grid Clicking to Open Purchase Menu
+        // 2. Open Checkout Screen on Click
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
-            // Snap perfectly to a 10x10 block grid system
             selectedX = Math.floor((e.clientX - rect.left) / 10) * 10;
             selectedY = Math.floor((e.clientY - rect.top) / 10) * 10;
 
@@ -98,19 +97,19 @@
             buyModal.style.display = 'block';
         });
 
-        // Close modal if user clicks outside
+        // Close UI if clicking boundary overlay
         overlay.addEventListener('click', () => {
             overlay.style.display = 'none';
             buyModal.style.display = 'none';
         });
 
-        // 3. Process Live Web3 Transaction and Update Database
+        // 3. Fire Direct Wallet Transfer & Trigger Secure Database Function
         payBtn.addEventListener('click', async () => {
             const imgUrl = document.getElementById('imgUrl').value;
             const linkUrl = document.getElementById('linkUrl').value;
 
             if(!imgUrl || !linkUrl) return alert("Please fill out both fields!");
-            if(!window.ethereum) return alert("Please install MetaMask or a Web3 wallet extension!");
+            if(!window.ethereum) return alert("Please switch to a Web3 enabled browser extension!");
 
             try {
                 payBtn.innerText = "Connecting Wallet...";
@@ -118,37 +117,42 @@
                 await provider.send("eth_requestAccounts", []);
                 const signer = provider.getSigner();
 
-                payBtn.innerText = "Waiting for Payment...";
-                // Sends direct blockchain transaction to YOUR wallet address
+                payBtn.innerText = "Awaiting Tx Confirmation...";
                 const tx = await signer.sendTransaction({
                     to: MY_WALLET,
-                    value: ethers.utils.parseEther("0.001") // Custom price: 0.001 ETH per 10x10 block
+                    value: ethers.utils.parseEther("0.001") // Custom price: 0.001 ETH
                 });
 
-                payBtn.innerText = "Confirming on Blockchain...";
-                await tx.wait(); // Wait for network block verification
+                payBtn.innerText = "Indexing Blockchain Ref...";
+                await tx.wait(); 
 
-                // Insert data directly to Supabase cloud
-                const { error } = await supabaseClient.from('pixels').insert([
-                    { x: selectedX, y: selectedY, width: 10, height: 10, image_url: imgUrl, link_url: linkUrl, tx_hash: tx.hash }
-                ]);
+                // Call the secure RPC function we built in the SQL editor
+                const { error } = await supabaseClient.rpc('buy_pixel_secure', {
+                    _x: selectedX,
+                    _y: selectedY,
+                    _width: 10,
+                    _height: 10,
+                    _image_url: imgUrl,
+                    _link_url: linkUrl,
+                    _tx_hash: tx.hash
+                });
 
                 if(error) throw error;
 
-                alert("Success! Your block is secured.");
+                alert("Block secured successfully!");
                 overlay.style.display = 'none';
                 buyModal.style.display = 'none';
                 fetchAndDrawPixels();
 
             } catch (err) {
                 console.error(err);
-                alert("Transaction failed or rejected.");
+                alert("Transaction canceled or security validation failed.");
             } finally {
                 payBtn.innerText = "Pay with Crypto Wallet";
             }
         });
 
-        // Click a bought block to open its link
+        // Redirect on Double Click
         canvas.addEventListener('dblclick', async (e) => {
             const rect = canvas.getBoundingClientRect();
             const clickX = Math.floor((e.clientX - rect.left) / 10) * 10;
@@ -160,7 +164,7 @@
             }
         });
 
-        // Load page
+        // Render Canvas on boot
         fetchAndDrawPixels();
     </script>
 </body>
