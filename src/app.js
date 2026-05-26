@@ -27,7 +27,7 @@ const totalPriceEl = document.getElementById('totalPrice');
 
 let isSubmitting = false;
 const imageCache = new Map();
-let selectedSet = new Set();
+let selectedPixels = []; // array of {x, y}
 let tempSelection = new Set();
 let isDragging = false;
 let dragStart = null;
@@ -178,8 +178,9 @@ function drawSelections() {
     });
 
     // confirmed selections
-    selectedSet.forEach((k) => {
-        const [x, y] = k.split(',').map(Number);
+    selectedPixels.forEach((p) => {
+        const x = Number(p.x);
+        const y = Number(p.y);
         ctx.fillStyle = 'rgba(56,189,248,0.4)';
         ctx.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
         ctx.strokeStyle = 'rgba(2,6,23,0.6)';
@@ -229,7 +230,7 @@ async function getPixelRecord(x, y) {
 }
 
 function updateSelectionUI() {
-    const totalPixels = selectedSet.size;
+    const totalPixels = selectedPixels.length;
     blockCoords.innerText = `Selected Pixels: ${totalPixels}`;
     if (pixelCountEl) pixelCountEl.innerText = String(totalPixels);
     const totalEth = (totalPixels * Number(PIXEL_PRICE_ETH)).toFixed(6).replace(/\.0+$/, '.0');
@@ -253,7 +254,7 @@ function resetModal() {
 async function handlePurchase() {
     if (isSubmitting) return;
 
-    const totalPixels = selectedSet.size;
+    const totalPixels = selectedPixels.length;
     if (totalPixels < 100) {
         showToast('Minimum order size is 100 pixels (0.1 ETH)', 'error');
         return;
@@ -307,9 +308,9 @@ async function handlePurchase() {
 
         payBtn.innerText = 'Awaiting transaction...';
 
-        // Calculate total value in wei using BigNumber multiply
-        const perPixelWei = ethers.utils.parseEther(PIXEL_PRICE_ETH);
-        const totalValue = perPixelWei.mul(totalPixels);
+        // Calculate total ETH as decimal string and parse to wei for exact transfer
+        const totalEthString = (totalPixels * Number(PIXEL_PRICE_ETH)).toFixed(6);
+        const totalValue = ethers.utils.parseEther(totalEthString);
 
         const tx = await signer.sendTransaction({
             to: PAYMENT_RECEIVER,
@@ -321,25 +322,18 @@ async function handlePurchase() {
 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Loop RPC insertion for each pixel coordinate
-        const insertPromises = [];
-        selectedSet.forEach((k) => {
-            const [x, y] = k.split(',').map(Number);
-            insertPromises.push(
-                supabaseClient.rpc('buy_pixel_secure', {
-                    _x: x,
-                    _y: y,
-                    _width: CELL_SIZE,
-                    _height: CELL_SIZE,
-                    _image_url: imageUrl,
-                    _link_url: linkUrl,
-                    _tx_hash: tx.hash,
-                })
-            );
+        // Prepare parallel X and Y arrays and call the flexible RPC once
+        const xArrayData = selectedPixels.map((p) => Number(p.x));
+        const yArrayData = selectedPixels.map((p) => Number(p.y));
+
+        const { error: rpcError } = await supabaseClient.rpc('buy_pixel_secure_flexible', {
+            _x_array: xArrayData,
+            _y_array: yArrayData,
+            _image_url: imageUrl,
+            _link_url: linkUrl,
+            _tx_hash: tx.hash,
         });
 
-        const insertResults = await Promise.all(insertPromises);
-        const rpcError = insertResults.find((r) => r.error);
         if (rpcError) {
             console.error('Supabase RPC failed:', rpcError);
             showToast('Purchase saved locally, but failed to finalize on the server.', 'error');
@@ -349,7 +343,7 @@ async function handlePurchase() {
         showToast('Pixels purchased successfully! Refreshing canvas.', 'info');
         setTimeout(() => {
             closeModal();
-            selectedSet.clear();
+            selectedPixels = [];
             fetchAndDrawPixels();
         }, 800);
     } catch (error) {
@@ -389,8 +383,13 @@ function previewSelectionBetween(start, end) {
 
 function commitTempSelectionToggle() {
     tempSelection.forEach((k) => {
-        if (selectedSet.has(k)) selectedSet.delete(k);
-        else selectedSet.add(k);
+        const [x, y] = k.split(',').map(Number);
+        const existsIdx = selectedPixels.findIndex((p) => Number(p.x) === x && Number(p.y) === y);
+        if (existsIdx >= 0) {
+            selectedPixels.splice(existsIdx, 1);
+        } else {
+            selectedPixels.push({ x, y });
+        }
     });
     tempSelection.clear();
 }
@@ -430,7 +429,7 @@ function attachEvents() {
         // open modal on selection change
         resetModal();
         openModal();
-        if (selectedSet.size < 100) {
+        if (selectedPixels.length < 100) {
             showToast('Minimum order size is 100 pixels (0.1 ETH)', 'error');
         }
     });
